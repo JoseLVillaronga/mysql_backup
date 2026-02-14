@@ -6,6 +6,18 @@ Este documento unifica la operación diaria y las decisiones técnicas principal
 
 ---
 
+## Capturas de la interfaz
+
+![Captura 1](./Capturas/captura1.jpg)
+![Captura 2](./Capturas/captura2.jpg)
+![Captura 3](./Capturas/captura3.jpg)
+![Captura 4](./Capturas/captura4.jpg)
+![Captura 5](./Capturas/captura5.jpg)
+![Captura 6](./Capturas/captura6.jpg)
+![Captura 7](./Capturas/captura7.jpg)
+
+---
+
 ## 1) Objetivo del proyecto
 
 Resolver desde web lo mismo que hacen los scripts operativos:
@@ -142,6 +154,22 @@ Detalles técnicos:
 - Usa `mongorestore` con credenciales de `.env` (`HOST`, `PUERTO`, `USUARIO`, `CONTRASENA`, `AUTH_DB`).
 - Modo total: `mongorestore --drop <backup_path>`
 - Modo parcial: por cada base seleccionada usa `mongorestore --drop --db <db> <backup_path>/<db>`
+
+### D) Limpieza de backups históricos por antigüedad
+
+Disponible en UI en:
+- `/historical` (MySQL)
+- `/mongodb` (MongoDB)
+
+Acciones rápidas:
+- Borrar backups con más de **7 días**
+- Borrar backups con más de **15 días**
+- Borrar backups con más de **30 días**
+
+Notas:
+- Siempre requiere confirmación escribiendo `SI`.
+- MySQL: elimina archivos `*-back_*.sql.gz` antiguos de `DIR_DESTINO`.
+- MongoDB: elimina carpetas `backup_*` antiguas de `DESTINO`.
 
 ---
 

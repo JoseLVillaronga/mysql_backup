@@ -11,9 +11,22 @@
             </h2>
             <p class="text-muted mb-0">Restauración histórica total o parcial (una o más bases) desde backups de mongodump</p>
         </div>
-        <a href="{{ url_for('index') }}" class="btn btn-secondary">
-            <i class="bi bi-arrow-left me-2"></i>Volver al Dashboard
-        </a>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <div class="btn-group" role="group" aria-label="Limpieza backups MongoDB">
+                <button class="btn btn-outline-danger btn-sm" onclick="cleanupMongoBackups(7)">
+                    <i class="bi bi-trash me-1"></i>Borrar >7 días
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="cleanupMongoBackups(15)">
+                    Borrar >15 días
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="cleanupMongoBackups(30)">
+                    Borrar >30 días
+                </button>
+            </div>
+            <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                <i class="bi bi-arrow-left me-2"></i>Volver al Dashboard
+            </a>
+        </div>
     </div>
 </div>
 
@@ -235,6 +248,75 @@ function restoreMongoPartial(button) {
             mode: 'partial',
             databases: result.value.selected,
             confirm: result.value.confirmInput
+        });
+    });
+}
+
+function cleanupMongoBackups(days) {
+    Swal.fire({
+        title: `Borrar backups históricos MongoDB > ${days} días`,
+        html: `
+            <div class="text-start">
+                <p>Se eliminarán carpetas <code>backup_*</code> con antigüedad mayor a <strong>${days}</strong> días.</p>
+                <div class="alert alert-warning mb-2">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Esta acción no se puede deshacer.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, borrar',
+        cancelButtonText: 'Cancelar',
+        input: 'text',
+        inputPlaceholder: 'Escribe "SI" para confirmar',
+        inputValidator: (value) => {
+            if (!value || value.toUpperCase() !== 'SI') {
+                return 'Debes escribir "SI" para confirmar';
+            }
+        }
+    }).then((result) => {
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        showLoading();
+        fetch('/api/cleanup/backups', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                backup_type: 'mongo_historical',
+                days: days,
+                confirm: result.value
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            hideLoading();
+            if (!data.success) {
+                Swal.fire({
+                    title: 'Error',
+                    text: data.error || 'No se pudo ejecutar la limpieza',
+                    icon: 'error'
+                });
+                return;
+            }
+
+            Swal.fire({
+                title: 'Limpieza completada',
+                text: data.message,
+                icon: 'success'
+            }).then(() => location.reload());
+        })
+        .catch(() => {
+            hideLoading();
+            Swal.fire({
+                title: 'Error',
+                text: 'Error de conexión al servidor',
+                icon: 'error'
+            });
         });
     });
 }

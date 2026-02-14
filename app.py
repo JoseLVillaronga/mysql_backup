@@ -7,7 +7,8 @@ Interfaz web para restauración de backups
 import os
 import subprocess
 import re
-from datetime import datetime
+import shutil
+from datetime import datetime, timedelta
 from flask import Flask, render_template, request, jsonify, flash, redirect, url_for
 from flask_bootstrap import Bootstrap
 from pathlib import Path
@@ -214,6 +215,46 @@ def build_mongorestore_base_cmd():
         cmd.extend(['--authenticationDatabase', MONGO_AUTH_DB])
     return cmd
 
+
+def cleanup_mysql_historical_backups(days):
+    """Elimina backups .sql.gz de MySQL más antiguos que N días."""
+    deleted = []
+    backup_dir = Path(DIR_DESTINO)
+    if not backup_dir.exists() or not backup_dir.is_dir():
+        return deleted
+
+    cutoff = datetime.now() - timedelta(days=days)
+    for file in backup_dir.glob('*-back_*.sql.gz'):
+        if not file.is_file():
+            continue
+
+        file_modified = datetime.fromtimestamp(file.stat().st_mtime)
+        if file_modified < cutoff:
+            file.unlink(missing_ok=True)
+            deleted.append(file.name)
+
+    return deleted
+
+
+def cleanup_mongo_historical_backups(days):
+    """Elimina carpetas backup_* de MongoDB más antiguas que N días."""
+    deleted = []
+    backup_dir = Path(MONGO_BACKUP_DEST)
+    if not backup_dir.exists() or not backup_dir.is_dir():
+        return deleted
+
+    cutoff = datetime.now() - timedelta(days=days)
+    for folder in backup_dir.glob('backup_*'):
+        if not folder.is_dir():
+            continue
+
+        folder_modified = datetime.fromtimestamp(folder.stat().st_mtime)
+        if folder_modified < cutoff:
+            shutil.rmtree(folder)
+            deleted.append(folder.name)
+
+    return deleted
+
 # Obtener backups incrementales
 def get_incremental_backups():
     backups = []
@@ -369,6 +410,48 @@ def api_restore_historical():
             return jsonify({'success': True, 'message': 'Restauración completada con éxito'})
         else:
             return jsonify({'success': False, 'error': f'Error durante la restauración: {result.stderr}'}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@app.route('/api/cleanup/backups', methods=['POST'])
+def api_cleanup_backups():
+    """API para limpieza de backups históricos por antigüedad."""
+    data = request.json or {}
+    backup_type = data.get('backup_type', '').strip().lower()
+    confirm = data.get('confirm', '').upper()
+    days_raw = data.get('days')
+
+    if confirm != 'SI':
+        return jsonify({'success': False, 'error': 'Debe confirmar escribiendo "SI"'}), 400
+
+    try:
+        days = int(days_raw)
+    except (TypeError, ValueError):
+        return jsonify({'success': False, 'error': 'El valor de días es inválido'}), 400
+
+    if days not in (7, 15, 30):
+        return jsonify({'success': False, 'error': 'Solo se permiten 7, 15 o 30 días'}), 400
+
+    try:
+        if backup_type == 'mysql_historical':
+            deleted = cleanup_mysql_historical_backups(days)
+            return jsonify({
+                'success': True,
+                'message': f'Se eliminaron {len(deleted)} backups históricos MySQL con más de {days} días',
+                'deleted': deleted
+            })
+
+        if backup_type == 'mongo_historical':
+            deleted = cleanup_mongo_historical_backups(days)
+            return jsonify({
+                'success': True,
+                'message': f'Se eliminaron {len(deleted)} backups históricos MongoDB con más de {days} días',
+                'deleted': deleted
+            })
+
+        return jsonify({'success': False, 'error': 'Tipo de backup inválido'}), 400
+
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
