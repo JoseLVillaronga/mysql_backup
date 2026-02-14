@@ -114,6 +114,41 @@ sudo systemctl restart mysql-backup-web
 
 ---
 
+## Estrategia operativa de cron (ejemplo)
+
+Ejemplo de `crontab` **sin rutas reales**:
+
+```cron
+# Backup MySQL
+0 23 * * *   /usr/bin/bash /ruta/proyecto/back-sql-no-data.sh
+10 23 * * *  /usr/bin/bash /ruta/proyecto/back-sql-single.sh
+0 5 * * *    /usr/bin/bash /ruta/proyecto/back-sql-single-inc.sh
+*/15 7-18 * * * /usr/bin/bash /ruta/proyecto/rotate_binlogs.sh
+
+# Backup MongoDB
+20 23 * * *  /usr/bin/bash /ruta/proyecto/back-mongo.sh
+```
+
+### Qué estrategia implementa
+
+1. **MySQL histórico diario (noche)**
+   - `back-sql-no-data.sh` y `back-sql-single.sh` generan el respaldo completo histórico del día.
+
+2. **MySQL base para PITR (madrugada)**
+   - `back-sql-single-inc.sh` genera la base sobre la que luego se aplican binlogs.
+
+3. **Rotación de binlogs en horario operativo**
+   - `rotate_binlogs.sh` cada 15 minutos entre 07:00 y 18:59 para granularidad de recuperación durante el día.
+
+4. **MongoDB histórico diario**
+   - `back-mongo.sh` genera un `mongodump` histórico al cierre del día.
+
+Con esta combinación se cubren dos necesidades:
+- **Recuperación histórica** (snapshots diarios)
+- **Recuperación fina MySQL tipo PITR** (base + binlogs)
+
+---
+
 ## 6) Flujo funcional
 
 ### A) Restauración histórica
