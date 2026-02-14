@@ -1,0 +1,182 @@
+{% extends "base.html" %}
+
+{% block title %}Backups Históricos - Gestión de Backups{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-3">
+            <i class="bi bi-clock-history me-2"></i>Backups Históricos
+        </h2>
+        <p class="text-muted">Listado completo de backups históricos comprimidos (.sql.gz)</p>
+    </div>
+</div>
+
+<div class="row mb-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-body">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="searchInput" placeholder="Buscar por nombre de base..." onkeyup="filterTable()">
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6 text-end">
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Volver al Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                {% if backups %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="backupsTable">
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Base de Datos</th>
+                                <th>Fecha</th>
+                                <th>Tamaño</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in backups %}
+                            <tr class="backup-row" data-db="{{ backup.db_name }}">
+                                <td class="font-monospace small">
+                                    <i class="bi bi-file-earmark-zip me-1"></i>{{ backup.filename }}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ backup.db_name }}</span>
+                                </td>
+                                <td>{{ backup.date_str }}</td>
+                                <td>{{ backup.size }}</td>
+                                <td>
+                                    <button onclick="restoreBackup('{{ backup.filename }}', '{{ backup.db_name }}', '{{ backup.date_str }}')" 
+                                            class="btn btn-primary btn-sm btn-action">
+                                        <i class="bi bi-arrow-counterclockwise me-1"></i>Restaurar
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem; color: #dee2e6;"></i>
+                    <p class="text-muted mt-3">No hay backups históricos disponibles</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showLoading() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function filterTable() {
+    const input = document.getElementById('searchInput');
+    const filter = input.value.toUpperCase();
+    const table = document.getElementById('backupsTable');
+    const rows = table.getElementsByTagName('tr');
+
+    for (let i = 1; i < rows.length; i++) {
+        const dbCell = rows[i].getAttribute('data-db');
+        if (dbCell) {
+            const txtValue = dbCell;
+            if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                rows[i].style.display = "";
+            } else {
+                rows[i].style.display = "none";
+            }
+        }
+    }
+}
+
+function restoreBackup(filename, dbName, dateStr) {
+    Swal.fire({
+        title: 'Confirmación de Restauración',
+        html: `
+            <div class="text-start">
+                <p><strong>Archivo:</strong> ${filename}</p>
+                <p><strong>Base de Datos:</strong> <span class="badge bg-secondary">${dbName}</span></p>
+                <p><strong>Fecha del Backup:</strong> ${dateStr}</p>
+                <div class="alert alert-danger mt-3">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>¡ADVERTENCIA!</strong><br>
+                    Esta operación BORRARÁ toda la información actual de la base de datos '${dbName}' y la reemplazará con el backup seleccionado.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, restaurar',
+        cancelButtonText: 'Cancelar',
+        input: 'text',
+        inputPlaceholder: 'Escribe "SI" para confirmar',
+        inputValidator: (value) => {
+            if (!value || value.toUpperCase() !== 'SI') {
+                return 'Debes escribir "SI" para confirmar'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoading();
+            fetch('/api/restore/historical', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    backup_file: filename,
+                    confirm: result.value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Restauración Completada!',
+                        text: data.message,
+                        icon: 'success'
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Error',
+                        text: data.error,
+                        icon: 'error'
+                    });
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Error de conexión al servidor',
+                    icon: 'error'
+                });
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

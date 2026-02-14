@@ -1,0 +1,286 @@
+{% extends "base.html" %}
+
+{% block title %}Dashboard - Gestión de Backups{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-3">
+            <i class="bi bi-speedometer2 me-2"></i>Dashboard
+        </h2>
+    </div>
+</div>
+
+{% if binlog_format == 'ROW' %}
+<div class="alert alert-warning alert-dismissible fade show" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Advertencia:</strong> El formato de binlog es <code>ROW</code>. La restauración PITR granular por base de datos puede no funcionar correctamente. Se recomienda cambiar a <code>STATEMENT</code> o <code>MIXED</code> en my.cnf.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-clock-history me-2"></i>Últimos Backups Históricos
+            </div>
+            <div class="card-body">
+                {% if historical %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Base</th>
+                                <th>Fecha</th>
+                                <th>Tamaño</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in historical %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-secondary">{{ backup.db_name }}</span>
+                                </td>
+                                <td>{{ backup.date_str }}</td>
+                                <td>{{ backup.size }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('historical') }}" class="btn btn-outline-primary btn-sm">
+                        Ver todos <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">No hay backups históricos</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-database me-2"></i>Backups Incrementales (PITR)
+            </div>
+            <div class="card-body">
+                {% if incremental %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Base</th>
+                                <th>Modificado</th>
+                                <th>Tamaño</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in incremental %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-success">{{ backup.db_name }}</span>
+                                </td>
+                                <td>{{ backup.modified }}</td>
+                                <td>{{ backup.size }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('pitr') }}" class="btn btn-outline-success btn-sm">
+                        Restaurar PITR <i class="bi bi-arrow-counterclockwise"></i>
+                    </a>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">No hay backups incrementales</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card h-100">
+            <div class="card-header">
+                <i class="bi bi-file-earmark-binary me-2"></i>Binlogs Disponibles
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <span class="badge bg-info">Formato: {{ binlog_format }}</span>
+                    {% if mysql_datadir %}
+                    <br>
+                    <small class="text-muted">{{ mysql_datadir }}</small>
+                    {% endif %}
+                </div>
+                {% if binlogs %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Archivo</th>
+                                <th>Modificado</th>
+                                <th>Tamaño</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for binlog in binlogs %}
+                            <tr>
+                                <td class="font-monospace small">{{ binlog.filename }}</td>
+                                <td>{{ binlog.modified }}</td>
+                                <td>{{ binlog.size }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="d-grid gap-2 mt-3">
+                    <button onclick="rotateBinlogs()" class="btn btn-warning btn-action">
+                        <i class="bi bi-arrow-clockwise me-2"></i>Rotar Binlogs
+                    </button>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">No hay binlogs disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-box me-2"></i>Backups MongoDB
+            </div>
+            <div class="card-body">
+                {% if mongo_backups %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Backup</th>
+                                <th>Modificado</th>
+                                <th>Tamaño</th>
+                                <th>Bases</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in mongo_backups %}
+                            <tr>
+                                <td class="font-monospace small">{{ backup.name }}</td>
+                                <td>{{ backup.modified }}</td>
+                                <td>{{ backup.size }}</td>
+                                <td><span class="badge bg-info">{{ backup.db_count }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center mt-3">
+                    <a href="{{ url_for('mongodb') }}" class="btn btn-outline-primary btn-sm">
+                        Restaurar MongoDB <i class="bi bi-arrow-right"></i>
+                    </a>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">No hay backups MongoDB disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>Información del Sistema
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Estrategia de Backup</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Backup diario completo (histórico)</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Backup incremental (PITR)</li>
+                            <li><i class="bi bi-check-circle-fill text-success me-2"></i>Rotación de binlogs cada 15 min</li>
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h6 class="text-muted mb-3">Opciones de Restauración</h6>
+                        <ul class="list-unstyled">
+                            <li><i class="bi bi-clock-history text-primary me-2"></i>Restauración histórica completa</li>
+                            <li><i class="bi bi-arrow-counterclockwise text-primary me-2"></i>PITR (Point-In-Time Recovery)</li>
+                            <li><i class="bi bi-database text-primary me-2"></i>Restauración granular por base</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showLoading() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function rotateBinlogs() {
+    Swal.fire({
+        title: '¿Rotar Binlogs?',
+        text: 'Esto forzará a MySQL a crear un nuevo archivo de binlog',
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonColor: '#ffc107',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, rotar',
+        cancelButtonText: 'Cancelar'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoading();
+            fetch('/api/rotate-binlogs', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Éxito!',
+                        text: data.message,
+                        icon: 'success'
+                    }).then(() => {
+                        location.reload();
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Error',
+                        text: data.error,
+                        icon: 'error'
+                    });
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Error de conexión',
+                    icon: 'error'
+                });
+            });
+        }
+    });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,345 @@
+{% extends "base.html" %}
+
+{% block title %}Restauración PITR - Gestión de Backups{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-3">
+            <i class="bi bi-arrow-counterclockwise me-2"></i>Restauración PITR (Point-In-Time Recovery)
+        </h2>
+        <p class="text-muted">Restauración granular con recuperación a un punto exacto en el tiempo</p>
+    </div>
+</div>
+
+{% if binlog_format == 'ROW' %}
+<div class="alert alert-warning alert-dismissible fade show mb-4" role="alert">
+    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+    <strong>Advertencia Crítica:</strong> El formato de binlog es <code>ROW</code>. La restauración PITR granular por base de datos <strong>NO funcionará correctamente</strong>. Debes cambiar a <code>STATEMENT</code> o <code>MIXED</code> en my.cnf y reiniciar MySQL.
+    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endif %}
+
+<div class="row">
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-1-circle me-2"></i>Paso 1: Seleccionar Base
+            </div>
+            <div class="card-body">
+                <label class="form-label">Base de Datos:</label>
+                <select class="form-select" id="dbSelect" onchange="selectDatabase()">
+                    <option value="">-- Selecciona una base --</option>
+                    {% for db in databases %}
+                    <option value="{{ db }}">{{ db }}</option>
+                    {% endfor %}
+                </select>
+                {% if not databases %}
+                <p class="text-muted small mt-2">No hay bases de datos disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-2-circle me-2"></i>Paso 2: Binlogs Disponibles
+            </div>
+            <div class="card-body">
+                <div class="mb-2">
+                    <small class="text-muted">Selecciona los binlogs a aplicar:</small>
+                    <small class="text-muted d-block">Mostrando solo binlogs de hoy desde {{ hora_inicio }}.</small>
+                    <small class="text-muted d-block">Al seleccionar un binlog, se marcan automáticamente todos los anteriores.</small>
+                </div>
+                <div style="max-height: 200px; overflow-y: auto;" id="binlogsContainer">
+                    <p class="text-muted small">Primero selecciona una base de datos</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-4 mb-4">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-3-circle me-2"></i>Paso 3: Punto de Corte
+            </div>
+            <div class="card-body">
+                <label class="form-label">Hora exacta de corte (opcional):</label>
+                <input type="datetime-local" class="form-control" id="stopTimeInput" placeholder="YYYY-MM-DD HH:MM">
+                <small class="text-muted d-block mt-2">
+                    <i class="bi bi-info-circle me-1"></i>
+                    Deja vacío para aplicar hasta el final del último binlog seleccionado
+                </small>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-gear me-2"></i>Resumen de Operación
+            </div>
+            <div class="card-body">
+                <div class="row" id="summaryRow">
+                    <div class="col-12 text-center text-muted py-4">
+                        <i class="bi bi-arrow-left-right" style="font-size: 2rem;"></i>
+                        <p class="mb-0 mt-2">Completa los pasos anteriores para ver el resumen</p>
+                    </div>
+                </div>
+                <div class="d-grid gap-2 mt-3" id="actionButtons" style="display: none;">
+                    <button onclick="restorePITR()" class="btn btn-success btn-lg btn-action">
+                        <i class="bi bi-arrow-counterclockwise me-2"></i>Iniciar Restauración PITR
+                    </button>
+                    <a href="{{ url_for('index') }}" class="btn btn-secondary">
+                        <i class="bi bi-x-circle me-2"></i>Cancelar
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-info-circle me-2"></i>Información de Backups Incrementales
+            </div>
+            <div class="card-body">
+                {% if incremental %}
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr>
+                                <th>Base de Datos</th>
+                                <th>Archivo</th>
+                                <th>Última Modificación</th>
+                                <th>Tamaño</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in incremental %}
+                            <tr>
+                                <td><span class="badge bg-success">{{ backup.db_name }}</span></td>
+                                <td class="font-monospace small">{{ backup.filename }}</td>
+                                <td>{{ backup.modified }}</td>
+                                <td>{{ backup.size }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <p class="text-muted text-center mb-0">No hay backups incrementales disponibles</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+<script type="application/json" id="binlogsDataJson">{{ binlogs | tojson }}</script>
+{% endblock %}
+
+{% block scripts %}
+<script>
+let selectedDatabase = '';
+let selectedBinlogs = [];
+let selectedBinlogIndex = -1;
+const allBinlogsData = JSON.parse(document.getElementById('binlogsDataJson').textContent || '[]');
+
+function showLoading() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function selectDatabase() {
+    const dbSelect = document.getElementById('dbSelect');
+    selectedDatabase = dbSelect.value;
+    selectedBinlogs = [];
+    selectedBinlogIndex = -1;
+    
+    if (!selectedDatabase) {
+        document.getElementById('binlogsContainer').innerHTML = 
+            '<p class="text-muted small">Primero selecciona una base de datos</p>';
+        updateSummary();
+        return;
+    }
+    
+    // Mostrar binlogs disponibles
+    const binlogsContainer = document.getElementById('binlogsContainer');
+    const binlogsData = allBinlogsData;
+    
+    if (binlogsData.length === 0) {
+        binlogsContainer.innerHTML = '<p class="text-muted small">No hay binlogs disponibles</p>';
+    } else {
+        let html = '<div class="list-group">';
+        binlogsData.forEach(function(binlog, index) {
+            var itemHtml = '<div class="list-group-item list-group-item-action" onclick="selectBinlogRange(' + index + ')">';
+            itemHtml += '<div class="d-flex justify-content-between align-items-center">';
+            itemHtml += '<div>';
+            itemHtml += '<input type="checkbox" class="form-check-input me-2 binlog-checkbox" data-filename="' + binlog.filename + '">';
+            itemHtml += '<span class="font-monospace small">' + binlog.filename + '</span>';
+            itemHtml += '</div>';
+            itemHtml += '<small class="text-muted">' + binlog.modified + ' | ' + binlog.size + '</small>';
+            itemHtml += '</div></div>';
+            html += itemHtml;
+        });
+        html += '</div>';
+        binlogsContainer.innerHTML = html;
+    }
+    
+    updateSummary();
+}
+
+function selectBinlogRange(index) {
+    const listItems = document.querySelectorAll('#binlogsContainer .list-group-item');
+    const checkboxes = document.querySelectorAll('#binlogsContainer .binlog-checkbox');
+
+    // Si se hace click de nuevo en el mismo índice, limpiar selección
+    if (selectedBinlogIndex === index) {
+        selectedBinlogIndex = -1;
+        selectedBinlogs = [];
+        listItems.forEach(function(item) { item.classList.remove('active'); });
+        checkboxes.forEach(function(checkbox) { checkbox.checked = false; });
+        updateSummary();
+        return;
+    }
+
+    selectedBinlogIndex = index;
+    selectedBinlogs = [];
+
+    listItems.forEach(function(item, itemIndex) {
+        const shouldSelect = itemIndex <= index;
+        item.classList.toggle('active', shouldSelect);
+        checkboxes[itemIndex].checked = shouldSelect;
+        if (shouldSelect) {
+            selectedBinlogs.push(checkboxes[itemIndex].getAttribute('data-filename'));
+        }
+    });
+
+    updateSummary();
+}
+
+function updateSummary() {
+    const summaryRow = document.getElementById('summaryRow');
+    const actionButtons = document.getElementById('actionButtons');
+    
+    if (!selectedDatabase) {
+        summaryRow.innerHTML = `
+            <div class="col-12 text-center text-muted py-4">
+                <i class="bi bi-arrow-left-right" style="font-size: 2rem;"></i>
+                <p class="mb-0 mt-2">Completa los pasos anteriores para ver el resumen</p>
+            </div>
+        `;
+        actionButtons.style.display = 'none';
+        return;
+    }
+    
+    const stopTime = document.getElementById('stopTimeInput').value;
+    
+    summaryRow.innerHTML = '<div class="col-md-3">' +
+        '<h6 class="text-muted">Base de Datos</h6>' +
+        '<p class="mb-0"><span class="badge bg-success fs-6">' + selectedDatabase + '</span></p>' +
+        '</div>' +
+        '<div class="col-md-3">' +
+        '<h6 class="text-muted">Backup Base</h6>' +
+        '<p class="mb-0 small">' + selectedDatabase + '-back.sql</p>' +
+        '</div>' +
+        '<div class="col-md-3">' +
+        '<h6 class="text-muted">Binlogs a Aplicar</h6>' +
+        '<p class="mb-0"><strong>' + selectedBinlogs.length + '</strong> archivo(s)</p>' +
+        (selectedBinlogs.length > 0 ? '<small class="text-muted">' + selectedBinlogs.join(', ') + '</small>' : '') +
+        '</div>' +
+        '<div class="col-md-3">' +
+        '<h6 class="text-muted">Punto de Corte</h6>' +
+        '<p class="mb-0">' + (stopTime ? stopTime : 'Fin del último binlog') + '</p>' +
+        '</div>';
+    
+    actionButtons.style.display = 'block';
+}
+
+function restorePITR() {
+    const stopTime = document.getElementById('stopTimeInput').value;
+    
+    Swal.fire({
+        title: 'Confirmación de Restauración PITR',
+        html: `
+            <div class="text-start">
+                <p><strong>Base de Datos:</strong> <span class="badge bg-success">${selectedDatabase}</span></p>
+                <p><strong>Backup Base:</strong> ${selectedDatabase}-back.sql</p>
+                <p><strong>Binlogs a Aplicar:</strong> ${selectedBinlogs.length} archivo(s)</p>
+                ${selectedBinlogs.length > 0 ? `<p class="small text-muted">${selectedBinlogs.join(', ')}</p>` : ''}
+                <p><strong>Punto de Corte:</strong> ${stopTime ? stopTime : 'Fin del último binlog'}</p>
+                <div class="alert alert-danger mt-3">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    <strong>¡ADVERTENCIA!</strong><br>
+                    Esta operación BORRARÁ toda la información actual de '${selectedDatabase}' y la reemplazará con el backup + binlogs seleccionados.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, restaurar PITR',
+        cancelButtonText: 'Cancelar',
+        input: 'text',
+        inputPlaceholder: 'Escribe "SI" para confirmar',
+        inputValidator: (value) => {
+            if (!value || value.toUpperCase() !== 'SI') {
+                return 'Debes escribir "SI" para confirmar'
+            }
+        }
+    }).then((result) => {
+        if (result.isConfirmed) {
+            showLoading();
+            fetch('/api/restore/pitr', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    db_name: selectedDatabase,
+                    binlogs: selectedBinlogs,
+                    stop_time: stopTime,
+                    confirm: result.value
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                hideLoading();
+                if (data.success) {
+                    Swal.fire({
+                        title: '¡Restauración PITR Completada!',
+                        text: data.message,
+                        icon: 'success'
+                    });
+                } else {
+                    Swal.fire({
+                        title: 'Error',
+                        text: data.error,
+                        icon: 'error'
+                    });
+                }
+            })
+            .catch(error => {
+                hideLoading();
+                Swal.fire({
+                    title: 'Error',
+                    text: 'Error de conexión al servidor',
+                    icon: 'error'
+                });
+            });
+        }
+    });
+}
+
+// Actualizar resumen cuando cambia el tiempo de corte
+document.getElementById('stopTimeInput').addEventListener('change', updateSummary);
+</script>
+{% endblock %}

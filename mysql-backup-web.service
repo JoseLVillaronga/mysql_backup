@@ -1,0 +1,20 @@
+[Unit]
+Description=Flask MySQL Backup Web Interface
+After=network.target mysql.service
+
+[Service]
+Type=notify
+User=jose
+Group=jose
+WorkingDirectory=/home/jose/mysql_backup
+Environment="PATH=/home/jose/mysql_backup/venv/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+ExecStart=/home/jose/mysql_backup/venv/bin/gunicorn -w 4 -b 0.0.0.0:8200 app:app
+ExecReload=/bin/kill -s HUP $MAINPID
+KillMode=mixed
+TimeoutStopSec=5
+PrivateTmp=true
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

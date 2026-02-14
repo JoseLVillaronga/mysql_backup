@@ -1,0 +1,242 @@
+{% extends "base.html" %}
+
+{% block title %}MongoDB - Gestión de Backups{% endblock %}
+
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12 d-flex justify-content-between align-items-center">
+        <div>
+            <h2 class="mb-2">
+                <i class="bi bi-box me-2"></i>MongoDB
+            </h2>
+            <p class="text-muted mb-0">Restauración histórica total o parcial (una o más bases) desde backups de mongodump</p>
+        </div>
+        <a href="{{ url_for('index') }}" class="btn btn-secondary">
+            <i class="bi bi-arrow-left me-2"></i>Volver al Dashboard
+        </a>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <i class="bi bi-archive me-2"></i>Backups Históricos MongoDB
+            </div>
+            <div class="card-body">
+                {% if backups %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="mongoBackupsTable">
+                        <thead>
+                            <tr>
+                                <th>Backup</th>
+                                <th>Fecha</th>
+                                <th>Tamaño</th>
+                                <th>Bases Incluidas</th>
+                                <th>Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for backup in backups %}
+                            <tr data-backup-name="{{ backup.name }}" data-backup-databases='{{ backup.databases | tojson | forceescape }}'>
+                                <td class="font-monospace small">{{ backup.name }}</td>
+                                <td>{{ backup.modified }}</td>
+                                <td>{{ backup.size }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ backup.db_count }} base(s)</span>
+                                    {% if backup.databases %}
+                                    <small class="d-block text-muted mt-1">{{ backup.databases | join(', ') }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="d-flex gap-2 flex-wrap">
+                                        <button class="btn btn-danger btn-sm btn-action" onclick="restoreMongoFull('{{ backup.name }}', '{{ backup.modified }}')">
+                                            <i class="bi bi-arrow-clockwise me-1"></i>Restaurar Total
+                                        </button>
+                                        <button class="btn btn-primary btn-sm btn-action" onclick="restoreMongoPartial(this)">
+                                            <i class="bi bi-ui-checks-grid me-1"></i>Restaurar Parcial
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-center py-5">
+                    <i class="bi bi-inbox" style="font-size: 4rem; color: #dee2e6;"></i>
+                    <p class="text-muted mt-3">No hay backups MongoDB disponibles en {{ backups_dir if backups_dir else 'el destino configurado' }}</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+function showLoading() {
+    document.getElementById('loadingOverlay').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loadingOverlay').style.display = 'none';
+}
+
+function callMongoRestore(payload) {
+    showLoading();
+    fetch('/api/restore/mongo', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(response => response.json())
+    .then(data => {
+        hideLoading();
+        if (data.success) {
+            Swal.fire({
+                title: 'Restauración completada',
+                text: data.message,
+                icon: 'success'
+            });
+            return;
+        }
+
+        let details = '';
+        if (Array.isArray(data.details) && data.details.length > 0) {
+            details = '<br><small class="text-start d-block mt-2">' + data.details.join('<br>') + '</small>';
+        }
+
+        Swal.fire({
+            title: 'Error',
+            html: (data.error || 'Error durante la restauración de MongoDB') + details,
+            icon: 'error'
+        });
+    })
+    .catch(() => {
+        hideLoading();
+        Swal.fire({
+            title: 'Error',
+            text: 'Error de conexión al servidor',
+            icon: 'error'
+        });
+    });
+}
+
+function restoreMongoFull(backupName, modified) {
+    Swal.fire({
+        title: 'Confirmación de Restauración Total (MongoDB)',
+        html: `
+            <div class="text-start">
+                <p><strong>Backup:</strong> <span class="font-monospace">${backupName}</span></p>
+                <p><strong>Fecha:</strong> ${modified}</p>
+                <div class="alert alert-danger mt-3 mb-0">
+                    <i class="bi bi-exclamation-triangle-fill me-2"></i>
+                    Esta operación restaurará todas las bases incluidas en el backup (excepto sistema según contenido del dump), reemplazando datos actuales con <code>--drop</code>.
+                </div>
+            </div>
+        `,
+        icon: 'warning',
+        showCancelButton: true,
+        confirmButtonColor: '#dc3545',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Sí, restaurar total',
+        cancelButtonText: 'Cancelar',
+        input: 'text',
+        inputPlaceholder: 'Escribe "SI" para confirmar',
+        inputValidator: (value) => {
+            if (!value || value.toUpperCase() !== 'SI') {
+                return 'Debes escribir "SI" para confirmar';
+            }
+        }
+    }).then((result) => {
+        if (!result.isConfirmed) {
+            return;
+        }
+
+        callMongoRestore({
+            backup_name: backupName,
+            mode: 'full',
+            databases: [],
+            confirm: result.value
+        });
+    });
+}
+
+function restoreMongoPartial(button) {
+    const row = button.closest('tr');
+    const backupName = row.getAttribute('data-backup-name');
+    const databases = JSON.parse(row.getAttribute('data-backup-databases') || '[]');
+
+    if (!databases.length) {
+        Swal.fire({
+            title: 'Sin bases disponibles',
+            text: 'Este backup no contiene bases restaurables.',
+            icon: 'info'
+        });
+        return;
+    }
+
+    const dbOptionsHtml = databases.map((db, index) => {
+        return `
+            <div class="form-check text-start mb-1">
+                <input class="form-check-input mongo-db-check" type="checkbox" value="${db}" id="mongoDb_${index}">
+                <label class="form-check-label" for="mongoDb_${index}">${db}</label>
+            </div>
+        `;
+    }).join('');
+
+    Swal.fire({
+        title: 'Restauración Parcial (MongoDB)',
+        html: `
+            <div class="text-start">
+                <p><strong>Backup:</strong> <span class="font-monospace">${backupName}</span></p>
+                <p class="mb-2"><strong>Selecciona una o más bases:</strong></p>
+                <div style="max-height: 180px; overflow-y: auto; border: 1px solid #d0d7de; border-radius: 6px; padding: 8px;">
+                    ${dbOptionsHtml}
+                </div>
+                <div class="alert alert-warning mt-3 mb-2">
+                    Se aplicará <code>--drop</code> por cada base seleccionada.
+                </div>
+                <input id="mongoConfirmInput" class="swal2-input" placeholder="Escribe \"SI\" para confirmar">
+            </div>
+        `,
+        showCancelButton: true,
+        confirmButtonColor: '#0d6efd',
+        cancelButtonColor: '#6c757d',
+        confirmButtonText: 'Restaurar bases seleccionadas',
+        cancelButtonText: 'Cancelar',
+        focusConfirm: false,
+        preConfirm: () => {
+            const selected = Array.from(document.querySelectorAll('.mongo-db-check:checked')).map(el => el.value);
+            const confirmInput = (document.getElementById('mongoConfirmInput').value || '').toUpperCase();
+
+            if (!selected.length) {
+                Swal.showValidationMessage('Debes seleccionar al menos una base');
+                return false;
+            }
+
+            if (confirmInput !== 'SI') {
+                Swal.showValidationMessage('Debes escribir "SI" para confirmar');
+                return false;
+            }
+
+            return { selected, confirmInput };
+        }
+    }).then((result) => {
+        if (!result.isConfirmed || !result.value) {
+            return;
+        }
+
+        callMongoRestore({
+            backup_name: backupName,
+            mode: 'partial',
+            databases: result.value.selected,
+            confirm: result.value.confirmInput
+        });
+    });
+}
+</script>
+{% endblock %}
