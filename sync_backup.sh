@@ -54,7 +54,7 @@ echo "  Destino: $DIR_DESTINO_REMOTO"
 # --progress: muestra barra de progreso
 # Nota el / al final de ORIGEN: copia el *contenido* de la carpeta, no la carpeta en si.
 
-sudo rsync -avz --delete --progress "$DIR_DESTINO_ORIGEN/" "$DIR_DESTINO_REMOTO/"
+sudo rsync -avz --no-o --no-g --delete --progress "$DIR_DESTINO_ORIGEN/" "$DIR_DESTINO_REMOTO/"
 
 # Verificar codigo de salida
 if [ $? -eq 0 ]; then
