@@ -19,9 +19,6 @@ FECHA=$(date +"$FECHA_FORMAT")
 # Archivo de salida
 BACKUP="/mnt/backup/mysql/back-no-data_${FECHA}.sql.gz"
 
-# Bases a excluir
-EXCLUDE_DB="information_schema|performance_schema|mysql|sys"
-
 # Obtener lista de bases válidas
 DATABASES=$(mysql -u"$MYSQL_USER" -p"$MYSQL_PASS" -h"$MYSQL_HOST" \
   -N -e "SHOW DATABASES;" | grep -Ev "$EXCLUDE_DB")

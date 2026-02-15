@@ -19,15 +19,12 @@ FECHA=$(date +"$FECHA_FORMAT")
 # 3. Asegurar que el directorio de destino existe
 mkdir -p "$DIR_DESTINO_INC"
 
-# 4. Definir bases a excluir
-EXCLUDE_DB="information_schema|performance_schema|mysql|sys"
-
-# 5. Obtener lista de bases válidas
+# 4. Obtener lista de bases válidas
 # Nota: Usamos las variables cargadas ($MYSQL_USER, etc.)
 DATABASES=$(mysql -u"$MYSQL_USER" -p"$MYSQL_PASS" -h"$MYSQL_HOST" \
   -N -e "SHOW DATABASES;" | grep -Ev "$EXCLUDE_DB")
 
-# 6. Bucle para recorrer cada base de datos
+# 5. Bucle para recorrer cada base de datos
 for DB in $DATABASES; do
 
   # Nombre del archivo sin compresión (.sql)
