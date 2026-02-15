@@ -40,6 +40,11 @@ DIR_DESTINO_INC = env.get('DIR_DESTINO_INC', '/mnt/backup/mysql/incremental')
 BINLOG_BACKUP_DIR = env.get('BINLOG_BACKUP_DIR', '').strip()
 HORA_INICIO = env.get('HORA_INICIO', '00:00:00').strip()
 BINLOG_FILE_PATTERNS = ('mysql-bin.*', 'mariadb-bin.*', 'binlog.*')
+EXCLUDE_DB = {
+    db.strip().lower()
+    for db in env.get('EXCLUDE_DB', 'information_schema|performance_schema|mysql|sys').split('|')
+    if db.strip()
+}
 
 # Configuración MongoDB
 MONGO_HOST = env.get('HOST', '127.0.0.1').strip()
@@ -49,6 +54,18 @@ MONGO_PASS = env.get('CONTRASENA', '').strip()
 MONGO_AUTH_DB = env.get('AUTH_DB', 'admin').strip()
 MONGO_BACKUP_DEST = env.get('DESTINO', '/mnt/backup/mongo').strip()
 MONGO_SYSTEM_DATABASES = {'admin', 'config', 'local'}
+
+
+def get_excluded_databases():
+    """Obtiene bases a excluir desde EXCLUDE_DB (separadas por '|')."""
+    return set(EXCLUDE_DB)
+
+
+EXCLUDED_DATABASES = get_excluded_databases()
+
+
+def is_excluded_database(db_name):
+    return bool(db_name) and db_name.strip().lower() in EXCLUDED_DATABASES
 
 
 def get_hora_inicio_time():
@@ -120,7 +137,6 @@ def get_binlog_source_dir():
 # Obtener lista de bases de datos
 def get_databases():
     try:
-        exclude = "information_schema|performance_schema|mysql|sys"
         result = subprocess.run(
             ['mysql', f'-u{env["MYSQL_USER"]}', f'-p{env["MYSQL_PASS"]}', 
              f'-h{env["MYSQL_HOST"]}', '-N', '-e', 'SHOW DATABASES;'],
@@ -128,7 +144,7 @@ def get_databases():
         )
         if result.returncode == 0:
             databases = result.stdout.strip().split('\n')
-            return [db for db in databases if db and not re.match(exclude, db)]
+            return [db for db in databases if db and not is_excluded_database(db)]
     except Exception as e:
         print(f"Error obteniendo bases de datos: {e}")
     return []
@@ -143,6 +159,8 @@ def get_historical_backups():
             match = re.match(r'(.+)-back_(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.sql\.gz', file.name)
             if match:
                 db_name = match.group(1)
+                if is_excluded_database(db_name):
+                    continue
                 date_str = match.group(2)
                 try:
                     date_obj = datetime.strptime(date_str, '%Y-%m-%d_%H-%M')
@@ -264,6 +282,8 @@ def get_incremental_backups():
             match = re.match(r'(.+)-back\.sql', file.name)
             if match:
                 db_name = match.group(1)
+                if is_excluded_database(db_name):
+                    continue
                 stat = file.stat()
                 size_mb = stat.st_size / (1024 * 1024)
                 backups.append({

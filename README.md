@@ -70,11 +70,15 @@ BINLOG_BACKUP_DIR="/mnt/backup/mysql/binlogs"
 
 # Hora de inicio para listar binlogs PITR del día actual
 HORA_INICIO="07:00:00"
+
+# Bases a excluir globalmente (separadas por '|')
+EXCLUDE_DB="information_schema|performance_schema|mysql|sys"
 ```
 
 Notas:
 - Si `BINLOG_BACKUP_DIR` no está definido o está vacío/sin binlogs, la app consulta `SHOW VARIABLES LIKE 'datadir'` y usa esa ruta.
 - En `/pitr`, el Paso 2 muestra solo binlogs del día actual desde `HORA_INICIO`.
+- `EXCLUDE_DB` aplica globalmente en la GUI para MySQL: evita mostrar/listar/seleccionar esas bases en listados y restauraciones.
 - Proteger `.env` (`chmod 600 .env`).
 
 ---
