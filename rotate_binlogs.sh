@@ -66,4 +66,6 @@ for LOG_FILE in "$MYSQL_DATADIR"mysql-bin.*; do
     fi
 done
 
+sudo find "$BINLOG_BACKUP_DIR" -type f -name "mysql-bin.*" -mtime +0 -delete
+
 echo "Rotación y backup de binlogs finalizado."
