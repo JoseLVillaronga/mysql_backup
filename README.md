@@ -73,12 +73,17 @@ HORA_INICIO="07:00:00"
 
 # Bases a excluir globalmente (separadas por '|')
 EXCLUDE_DB="information_schema|performance_schema|mysql|sys"
+
+# Sincronización de backups (origen -> destino remoto/local)
+DIR_DESTINO_ORIGEN="/mnt/backup/"
+DIR_DESTINO_REMOTO="/mnt/backup/"
 ```
 
 Notas:
 - Si `BINLOG_BACKUP_DIR` no está definido o está vacío/sin binlogs, la app consulta `SHOW VARIABLES LIKE 'datadir'` y usa esa ruta.
 - En `/pitr`, el Paso 2 muestra solo binlogs del día actual desde `HORA_INICIO`.
 - `EXCLUDE_DB` aplica globalmente en la GUI para MySQL: evita mostrar/listar/seleccionar esas bases en listados y restauraciones.
+- `sync_backup.sh` usa `DIR_DESTINO_ORIGEN` y `DIR_DESTINO_REMOTO` para mantener una copia espejo con `rsync --delete`.
 - Proteger `.env` (`chmod 600 .env`).
 
 ---
@@ -131,6 +136,9 @@ Ejemplo de `crontab` **sin rutas reales**:
 
 # Backup MongoDB
 20 23 * * *  /usr/bin/bash /ruta/proyecto/back-mongo.sh
+
+# Sincronización continua de backups
+* * * * *  /usr/bin/bash /ruta/proyecto/sync_backup.sh
 ```
 
 ### Qué estrategia implementa
@@ -147,9 +155,14 @@ Ejemplo de `crontab` **sin rutas reales**:
 4. **MongoDB histórico diario**
    - `back-mongo.sh` genera un `mongodump` histórico al cierre del día.
 
+5. **Sincronización continua de repositorio de backups**
+   - `sync_backup.sh` corre cada minuto y replica `DIR_DESTINO_ORIGEN` hacia `DIR_DESTINO_REMOTO`.
+   - Usa `rsync --delete`, por lo que el destino queda en espejo del origen.
+
 Con esta combinación se cubren dos necesidades:
 - **Recuperación histórica** (snapshots diarios)
 - **Recuperación fina MySQL tipo PITR** (base + binlogs)
+- **Replicación operativa del repositorio de backups** (sincronización continua)
 
 ---
 
