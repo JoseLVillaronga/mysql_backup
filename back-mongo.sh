@@ -26,9 +26,9 @@ mkdir -p "${RUTA_FINAL}"
 mongodump --host "$HOST" --port "$PUERTO" \
           --username "$USUARIO" \
           --password "$CONTRASENA" \
-          --authenticationDatabase "$AUTH_DB" \
+          --authenticationDatabase admin \
           --out "$RUTA_FINAL"
 
 # Opcional: Mensaje de éxito
 echo "Backup completado en: $RUTA_FINAL"
-find /mnt/backup/mongodb -mindepth 1 -maxdepth 1 -type d -mtime +7 -ls
+find $DESTINO -mindepth 1 -maxdepth 1 -type d -mtime +7 -ls
