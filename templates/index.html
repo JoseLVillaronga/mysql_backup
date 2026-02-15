@@ -110,9 +110,11 @@
             <div class="card-body">
                 <div class="mb-3">
                     <span class="badge bg-info">Formato: {{ binlog_format }}</span>
-                    {% if mysql_datadir %}
-                    <br>
-                    <small class="text-muted">{{ mysql_datadir }}</small>
+                    {% if binlog_source_type %}
+                    <span class="badge bg-secondary ms-2">Origen: {{ binlog_source_type }}</span>
+                    {% endif %}
+                    {% if binlog_source_path %}
+                    <small class="text-muted d-block mt-1">{{ binlog_source_path }}</small>
                     {% endif %}
                 </div>
                 {% if binlogs %}

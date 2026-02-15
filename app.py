@@ -101,6 +101,13 @@ def get_mysql_datadir():
     return None
 
 
+def get_binlog_source_type(source_dir):
+    """Etiqueta del origen de binlogs según la lógica activa."""
+    if not source_dir:
+        return None
+    return 'BINLOG_BACKUP_DIR' if BINLOG_BACKUP_DIR else 'datadir MySQL'
+
+
 def list_binlog_files(binlog_dir):
     """Lista binlogs soportando distintos prefijos (MySQL/MariaDB)."""
     if not binlog_dir or not binlog_dir.exists() or not binlog_dir.is_dir():
@@ -118,13 +125,14 @@ def list_binlog_files(binlog_dir):
 def get_binlog_source_dir():
     """Resuelve el directorio de binlogs a utilizar en la app.
 
-    1) Preferir BINLOG_BACKUP_DIR (copias rotadas para PITR)
-    2) Fallback a datadir real de MySQL
+    1) Si BINLOG_BACKUP_DIR está definido/no vacío, usarlo
+    2) Si no está definido, fallback a datadir real de MySQL
     """
     if BINLOG_BACKUP_DIR:
         backup_dir = Path(BINLOG_BACKUP_DIR)
-        if backup_dir.exists() and backup_dir.is_dir() and list_binlog_files(backup_dir):
+        if backup_dir.exists() and backup_dir.is_dir():
             return backup_dir
+        return None
 
     mysql_datadir = get_mysql_datadir()
     if mysql_datadir:
@@ -367,6 +375,7 @@ def index():
     binlog_format = get_binlog_format()
     
     binlog_dir = get_binlog_source_dir()
+    binlog_source_type = get_binlog_source_type(binlog_dir)
 
     return render_template('index.html', 
                          historical=historical,
@@ -374,7 +383,8 @@ def index():
                          binlogs=binlogs,
                          mongo_backups=mongo_backups,
                          binlog_format=binlog_format,
-                         mysql_datadir=str(binlog_dir) if binlog_dir else None)
+                         binlog_source_path=str(binlog_dir) if binlog_dir else None,
+                         binlog_source_type=binlog_source_type)
 
 @app.route('/historical')
 def historical():
@@ -389,13 +399,17 @@ def pitr():
     incremental = get_incremental_backups()
     binlogs = get_pitr_binlogs_today()
     binlog_format = get_binlog_format()
+    binlog_dir = get_binlog_source_dir()
+    binlog_source_type = get_binlog_source_type(binlog_dir)
     
     return render_template('pitr.html', 
                          databases=databases,
                          incremental=incremental,
                          binlogs=binlogs,
                          binlog_format=binlog_format,
-                         hora_inicio=HORA_INICIO)
+                         hora_inicio=HORA_INICIO,
+                         binlog_source_path=str(binlog_dir) if binlog_dir else None,
+                         binlog_source_type=binlog_source_type)
 
 
 @app.route('/mongodb')

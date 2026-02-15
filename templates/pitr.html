@@ -50,6 +50,12 @@
                 <div class="mb-2">
                     <small class="text-muted">Selecciona los binlogs a aplicar:</small>
                     <small class="text-muted d-block">Mostrando solo binlogs de hoy desde {{ hora_inicio }}.</small>
+                    {% if binlog_source_type %}
+                    <small class="text-muted d-block">Origen de binlogs: <strong>{{ binlog_source_type }}</strong></small>
+                    {% endif %}
+                    {% if binlog_source_path %}
+                    <small class="text-muted d-block font-monospace">{{ binlog_source_path }}</small>
+                    {% endif %}
                     <small class="text-muted d-block">Al seleccionar un binlog, se marcan automáticamente todos los anteriores.</small>
                 </div>
                 <div style="max-height: 200px; overflow-y: auto;" id="binlogsContainer">
