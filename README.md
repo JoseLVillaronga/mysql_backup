@@ -253,6 +253,14 @@ Preferir permisos de mínimo privilegio para el usuario que corre la app (ej. `j
 1. agregar al grupo `mysql`, y/o
 2. aplicar ACL puntual de lectura en datadir/binlogs.
 
+Comando recomendado (usuario actual de entorno):
+
+```bash
+sudo usermod -aG mysql "$(id -un)"
+```
+
+> El instalador `install_systemd_service.sh` ya intenta ejecutar este paso automáticamente para el usuario que instala el servicio.
+
 Ejemplo ACL:
 
 ```bash

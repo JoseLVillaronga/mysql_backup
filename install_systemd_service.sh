@@ -25,6 +25,14 @@ echo "- Proyecto: ${SCRIPT_DIR}"
 echo "- Usuario: ${APP_USER}"
 echo "- Grupo: ${APP_GROUP}"
 
+if getent group mysql >/dev/null 2>&1; then
+  echo "Agregando usuario '${APP_USER}' al grupo 'mysql' para lectura de binlogs..."
+  sudo usermod -aG mysql "${APP_USER}"
+else
+  echo "WARN: No existe el grupo 'mysql'."
+  echo "      Crealo o aplicá ACL manual para lectura de binlogs antes de usar PITR."
+fi
+
 sudo tee "${SERVICE_PATH}" > /dev/null <<EOF
 [Unit]
 Description=Flask MySQL Backup Web Interface
