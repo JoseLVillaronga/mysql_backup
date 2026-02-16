@@ -246,6 +246,11 @@ sudo chmod -R 755 /var/lib/mysql/  # Ajustar ruta según tu configuración
 
 # O agregar usuario al grupo mysql
 sudo usermod -aG mysql TU_USUARIO
+
+# O usar ACL puntual:
+sudo setfacl -m u:TU_USUARIO:rx /var/lib/mysql
+sudo setfacl -m u:TU_USUARIO:r /var/lib/mysql/mysql-bin.*
+sudo setfacl -d -m u:TU_USUARIO:r /var/lib/mysql
 ```
 
 ## 🔒 Configuración de Seguridad Adicional
